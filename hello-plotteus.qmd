@@ -1,0 +1,428 @@
+---
+title: 'Hello Plotteus + RStats!'
+author: "boB Rudis (@hrbrmstr)"
+format:
+  html: 
+    code-tools: true
+    code-fold: true
+    code-summary: "Reveal code"
+    theme:
+      light: flatly
+      dark: darkly
+    monofont: 'Fira Code'
+echo: true
+observable: "https://github.com/bprusinowski/plotteus"
+---
+<link rel="preconnect" href="https://fonts.googleapis.com"> 
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin> 
+<link href="https://fonts.googleapis.com/css2?family=Lato:wght@300;400;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+
+<style>
+  .chart {
+    max-width: 640px;
+    height: 400px;
+    font-family: Lato;
+  }
+</style>
+
+This is an R + OJS (Observable-flavored JavaScript) Quarto version of [this Observable notebook](https://github.com/bprusinowski/plotteus). 
+
+You _must_ go through that notebook first before going through this. I will not be explaining too much about Plotteus, just how to wrangle data in R to get it to work _with_ Plotteus.
+
+Plotteus is a JS datavis library to help craft interactive stories. It _kind of_ works best in a scrollytelling setting, but it can be used outside of said setting quite well.
+
+We'll work through how to get R data frame data to Plotteus so you can tell stories with it in Quarto docs. I've folded most of the code blocks for readability.
+
+Please note that turning on "Dark Mode" will make some of the labels hard to read. I'll show how to counteract this on the OJS side in some future post.
+
+The following code block sets up some common labels and settings we'll use throughout the three OJS charting blocks. Reveal it to see what's set.
+
+```{ojs}
+title = "High School Aces"
+palette = "vivid"
+showLegend = true
+verticalAxis = ({
+  title: "Number of A+ scores"
+})
+```
+
+This is the intial data frame of the students (you saw this as an ugly JS array within the code block of the chart in the pure Observable version):
+
+```{r}
+#| code-fold: show
+data.frame(
+  student = c("Alicja", "Borys", "Celina", "Dorian", "Ewa", "Filip", "Greg"),
+  subject = rep("Math", 7),
+  num_scores = c(3L, 4L, 7L, 6L, 5L, 2L, 1L)
+) -> students
+
+students
+```
+
+We're going to get it into the shape you saw in the Observable notebook (an excerpt from that is below). I like to wrangle the data into a JSON string and then just parse that on the OJS side. I have the most control over what its shape will be that way.
+
+We actually make two data frames: the original and one sorted by the number of "A+" grades. We could just wrangle that in JS-land, but we're using R for a reason: we are better at data ops in R.
+
+Each block outputs the JSON that will be parsed.
+
+```{r}
+#| code-fold: show
+students |> 
+  dplyr::rename(
+    key = subject,
+    value = num_scores
+  ) |> 
+	dplyr::group_by(
+		student
+	) |> 
+  tidyr::nest(
+    data = c(key, value)
+  ) |> 
+  dplyr::ungroup() |> 
+  dplyr::rename(key = student) |> 
+  jsonlite::toJSON() -> students_json
+
+students_json
+
+students |> 
+  dplyr::arrange(
+		desc(num_scores)
+	) |> 
+	dplyr::rename(
+    key = subject,
+    value = num_scores
+  ) |> 
+	dplyr::group_by(
+		student
+	) |> 
+  tidyr::nest(
+    data = c(key, value)
+  ) |> 
+  dplyr::rename(key = student) |> 
+  dplyr::ungroup() |> 
+  jsonlite::toJSON() -> students_sorted_json
+
+students_sorted_json
+```
+
+Now we make those text strings available to the OJS runtime:
+
+```{r}
+#| code-fold: show
+ojs_define(students_json = students_json)
+ojs_define(students_sorted_json = students_sorted_json)
+```
+
+And, we parse the text into proper objects.
+
+```{ojs}
+//| code-fold: show
+students = JSON.parse(students_json)
+students_sorted = JSON.parse(students_sorted_json)
+```
+
+This is the format Plotteus expects, and you can see it matches what we built.
+
+```{ojs}
+//| code-fold: show
+[
+  {
+    key: "Alicja",
+    data: [{ key: "Math", value: 3 }]
+  },
+  {
+    key: "Borys",
+    data: [{ key: "Math", value: 4 }]
+  }
+]
+```
+
+This is the first plot (please use the "Code Tools" at the top of the document top see the OJS code that makes the chart):
+
+```{ojs}
+//| echo: false
+viewof t1 = storySlider("Step 1. Sorting")
+```
+
+```{ojs}
+//| echo: false
+chart1 = {
+  const node = makeChartNode();
+
+  const legendAnchor = "start";
+  const steps = [
+    {
+      key: "zero",
+      chartType: "bar",
+      title,
+      showLegend,
+      legendAnchor,
+      verticalAxis,
+      palette,
+      groups: students // <<<<============= OUR DATA FROM R
+    },
+    {
+      key: "one",
+      chartType: "bar",
+      title,
+      showLegend,
+      legendAnchor,
+      palette,
+      verticalAxis,
+      groups: students_sorted // <<<<============= OUR DATA FROM R
+    }
+  ];
+
+  const story = plotteus.makeStory(node, steps);
+
+  return nodeWithStoryRender(node, story);
+}
+```
+
+We will have another data frame for the second example since the transition in part two has two subjects. This is what the JS Object looks like:
+
+```{ojs}
+//| code-fold: show
+[
+  {
+    key: "Greg",
+    data: [
+      { key: "Math", value: 1 },
+      { key: "Chemistry", value: 6 }
+    ]
+  },
+	  {
+    key: "Filip",
+    data: [
+      { key: "Math", value: 2 },
+      { key: "Chemistry", value: 4 }
+    ]
+  }
+]
+```
+
+And this is the R code that makes the new data frame and JSON we'll send to OJS:
+
+```{r}
+#| code-fold: show
+read.csv(
+  text = '"student","subject","num_scores"
+"Alicja","Chemistry",4
+"Alicja","Math",4
+"Borys","Chemistry",1
+"Borys","Math",5
+"Celina","Math",7
+"Dorian","Chemistry",4
+"Dorian","Math",6
+"Ewa","Chemistry",2
+"Ewa","Math",3
+"Filip","Chemistry",4
+"Filip","Math",2
+"Greg","Chemistry",6
+"Greg","Math",1
+"Celina","Chemistry",2',
+  header = TRUE
+) |>
+  dplyr::mutate(
+    student = forcats::fct_reorder(student, num_scores, sum)
+  ) |>
+  dplyr::arrange(
+    student,
+		subject
+  ) -> two_subjects
+
+two_subjects |>
+  dplyr::rename(
+    key = subject,
+    value = num_scores
+  ) |>
+  dplyr::group_by(
+    student
+  ) |>
+  tidyr::nest(
+    data = c(key, value)
+  ) |>
+  dplyr::ungroup() |>
+  dplyr::rename(key = student) |>
+  jsonlite::toJSON() -> students2_json
+
+ojs_define(students2_json = students2_json)
+```
+
+And, we make this second one available to OJS as well:
+
+```{ojs}
+//| code-fold: show
+students2 = JSON.parse(students2_json)
+```
+
+This is the second example chart. Again, please use the "Code Tools" up top to view the chart OJS source:
+
+```{ojs}
+//| echo: false
+viewof t2 = storySlider("Step 2. Adding data")
+```
+
+```{ojs}
+//| echo: false
+chart2 = {
+  const node = makeChartNode();
+
+  const legendAnchor = "start";
+  const steps = [
+    {
+      key: "zero",
+      chartType: "bar",
+      title,
+      showLegend,
+      legendAnchor,
+      verticalAxis,
+      palette,
+      groups: students // <<<<============= OUR DATA FROM R
+    },
+    {
+      key: "one",
+      chartType: "bar",
+      chartSubtype: "stacked",
+      title,
+      showLegend,
+      legendAnchor,
+      palette,
+      verticalAxis,
+      groups: students2 // <<<<============= OUR DATA FROM R
+    }
+  ];
+  const story = plotteus.makeStory(node, steps);
+
+  return nodeWithStoryRender(node, story);
+}
+```
+
+We'll just do one more, the one that makes the horrible pie charts. It does show how cool and flexible the Plotteus transition framework is, though. First, we filter the second data frame down to just three students and pass it to OJS:
+
+```{r}
+#| code-fold: show
+two_subjects |>
+  dplyr::filter(
+		student %in% c("Alicja", "Celina", "Dorian")
+	)  |> 
+  dplyr::rename(
+    key = subject,
+    value = num_scores
+  ) |>
+  dplyr::group_by(
+    student
+  ) |>
+  tidyr::nest(
+    data = c(key, value)
+  ) |>
+  dplyr::ungroup() |>
+  dplyr::rename(key = student) |>
+  jsonlite::toJSON() -> just_three_json
+
+ojs_define(just_three_json = just_three_json)
+```
+
+```{ojs}
+//| code-fold: show
+just_three = JSON.parse(just_three_json)
+```
+
+And, now we render the final chart:
+
+```{ojs}
+//| echo: false
+viewof t3 = slider({
+  title: "Step 3. Changing chart type",
+  step: 0.001,
+  value: 0,
+  theme: "default-thin",
+  background: {
+    type: "double",
+    colors: ["#79A0FB", "#EBEBEB"]
+  },
+  oninput: ({ output, progress }) => {
+    output.textContent = `${Math.round(100 * progress)}%`;
+  }
+})
+```
+
+```{ojs}
+//| echo: false
+chart3 = {
+  const node = makeChartNode();
+
+  const steps = [
+    {
+      key: "zero",
+      chartType: "bar",
+      chartSubtype: "stacked",
+      title,
+      showLegend,
+      legendAnchor: "start",
+      verticalAxis,
+      palette,
+      groups: students2 // <<<<============= OUR DATA FROM R
+    },
+    {
+      key: "one",
+      chartType: "pie",
+      title,
+      titleAnchor: "middle",
+      palette,
+      groups: just_three // <<<<============= OUR DATA FROM R
+    }
+  ];
+  const story = plotteus.makeStory(node, steps);
+
+  return nodeWithStoryRender(node, story);
+}
+```
+
+There is invisible setup code below. Please use the "Code Tools" to view it, and read the Observable notebook version for more information.
+
+```{ojs}
+//| echo: false
+storySlider = (title) =>
+  slider({
+    title,
+    step: 0.001,
+    value: 0,
+    theme: "default-thin",
+    background: {
+      type: "double",
+      colors: ["#79A0FB", "#EBEBEB"]
+    },
+    oninput: ({ output, progress }) => {
+      output.textContent = `${Math.round(100 * progress)}%`;
+    }
+  })
+```
+
+```{ojs}
+//| echo: false
+//| output: false
+ease = (t) => -(Math.cos(Math.PI * t) - 1) / 2
+
+makeChartNode = () => d3.create("div").attr("class", "chart").node()
+
+nodeWithStoryRender = (node, story) => {
+  return Object.assign(node, {
+    render(step, t) {
+      story.render(step, t);
+    }
+  });
+}
+
+chart1.render("one", ease(t1))
+chart2.render("one", ease(t2))
+chart3.render("one", ease(t3))
+```
+
+```{ojs}
+//| echo: false
+import { slider } from "@bartok32/diy-inputs"
+d3 = require("d3")
+plotteus = import("https://unpkg.com/plotteus@1.0.2/dist/index.js?module")
+```
