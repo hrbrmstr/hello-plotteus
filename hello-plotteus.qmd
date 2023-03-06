@@ -26,7 +26,7 @@ observable: "https://github.com/bprusinowski/plotteus"
   }
 </style>
 
-This is an R + OJS (Observable-flavored JavaScript) Quarto version of [this Observable notebook](https://github.com/bprusinowski/plotteus). 
+This is an R + OJS (Observable-flavored JavaScript) Quarto version of [this Observable notebook](https://observablehq.com/@bartok32/hello-plotteus). 
 
 You _must_ go through that notebook first before going through this. I will not be explaining too much about Plotteus, just how to wrangle data in R to get it to work _with_ Plotteus.
 
